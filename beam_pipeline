@@ -1,0 +1,55 @@
+import apache_beam as beam
+import argparse
+from apache_beam.options.pipeline_options import PipelineOptions
+parser = argparse.ArgumentParser()
+parser.add_argument('--input', help='Input Avro file path')
+parser.add_argument('--output', help='Output BigQuery table')
+known_args, pipeline_args = parser.parse_known_args()
+pipeline_options = PipelineOptions(pipeline_args)
+with beam.Pipeline(options=pipeline_options) as p:
+    avro_data = p | 'ReadAvro' >> beam.io.ReadFromAvro(known_args.input)
+
+    avro_schema = avro_data.schema
+
+    bq_data = avro_data | 'ConvertToDict' >> beam.Map(lambda x: dict(x))
+
+    bq_data | 'WriteToBigQuery' >> beam.io.WriteToBigQuery(
+        table=known_args.output,
+        schema=avro_schema,
+        write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
+        create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED
+    )
+	
+	
+	python your_script.py --input gs://your-bucket/input.avro --output project_id:dataset.table_name --runner DataflowRunner --project your-project --temp_location gs://your-bucket/temp --region your-region
+------------------------------------------------------------------------------------------------------------
+import apache_beam as beam
+from apache_beam.io import WriteToBigQuery
+from apache_beam.options.pipeline_options import PipelineOptions
+import avro.schema
+from avro.datafile import DataFileReader
+from avro.io import DatumReader
+from google.cloud import bigquery
+avro_schema = avro.schema.Parse(open('schema.avsc', 'rb').read())
+options = PipelineOptions()
+p = beam.Pipeline(options=options)
+class ProcessAvroData(beam.DoFn):
+    def __init__(self, avro_schema):
+        self.avro_schema = avro_schema
+
+    def process(self, element):
+        datum_reader = DatumReader(self.avro_schema)
+        avro_reader = DataFileReader(element, datum_reader)
+        for record in avro_reader:
+            yield record
+(avro_files | "Read Avro Files" >> beam.io.ReadFromAvro(file_pattern="path/to/avro/files/*")
+             | "Process Avro Data" >> beam.ParDo(ProcessAvroData(avro_schema))
+             | "Write to BigQuery" >> WriteToBigQuery(
+                 table="<PROJECT_ID>:<DATASET>.<TABLE>",
+                 schema="<SCHEMA_JSON>",
+                 create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+                 write_disposition=beam.io.BigQueryDisposition.WRITE_TRUNCATE,
+                 custom_gcs_temp_location="gs://<TEMP_LOCATION>"
+             ))
+result = p.run()
+result.wait_until_finish()
