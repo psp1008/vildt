@@ -1,0 +1,27 @@
+import apache_beam as beam
+from apache_beam.io import ReadFromAvro
+from apache_beam.io.gcp.bigquery import WriteToBigQuery
+
+# Define a ParDo function to transform Avro records to BigQuery rows
+class AvroToBigQuery(beam.DoFn):
+    def process(self, element):
+        # Transform Avro record to BigQuery row format
+        # Replace this with your own logic to extract fields from the Avro record
+
+        # Example transformation:
+        row = {
+            'field1': element['field1'],
+            'field2': element['field2'],
+            'field3': element['field3']
+        }
+        yield row
+
+# Create a Dataflow pipeline
+with beam.Pipeline() as pipeline:
+    avro_files = pipeline | "Read Avro Files" >> ReadFromAvro(file_pattern="gs://your-bucket/path/to/avro/files/*.avro")
+    transformed_data = avro_files | "Transform Avro to BigQuery" >> beam.ParDo(AvroToBigQuery())
+    transformed_data | "Write to BigQuery" >> WriteToBigQuery(
+        table='project-id.dataset.table',
+        schema='field1:string,field2:integer,field3:float',
+        write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND
+    )
