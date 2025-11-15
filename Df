@@ -1,0 +1,38 @@
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions, GoogleCloudOptions, StandardOptions
+import requests
+import json
+
+class CallApiDoFn(beam.DoFn):
+    def process(self, element, api_endpoint):
+        # Create payload from element (a dict representing a BigQuery row)
+        payload = json.dumps(element)
+        # Make API call (synchronously, error handling simplified here)
+        response = requests.post(api_endpoint, data=payload, headers={'Content-Type':'application/json'})
+        if response.status_code == 200:
+            yield (element['id'], 'Success')
+        else:
+            yield (element['id'], f'Failed: {response.status_code}')
+
+def run(argv=None):
+    options = PipelineOptions()
+    gcloud_options = options.view_as(GoogleCloudOptions)
+    gcloud_options.project = 'your-gcp-project-id'
+    gcloud_options.job_name = 'batch-api-call-pipeline'
+    gcloud_options.temp_location = 'gs://your-bucket/temp'
+    gcloud_options.staging_location = 'gs://your-bucket/staging'
+    options.view_as(StandardOptions).runner = 'DataflowRunner'
+
+    # Query to read 10k records per batch; parameterize as needed
+    bq_query = 'SELECT * FROM your_dataset.your_table LIMIT 10000'
+
+    with beam.Pipeline(options=options) as p:
+        (
+            p
+            | 'ReadFromBigQuery' >> beam.io.ReadFromBigQuery(query=bq_query, use_standard_sql=True)
+            | 'CallExternalAPI' >> beam.ParDo(CallApiDoFn(), api_endpoint='https://your-api-endpoint.example.com/payload')
+            | 'WriteResults' >> beam.io.WriteToText('gs://your-bucket/output/results.txt')
+        )
+
+if __name__ == '__main__':
+    run()
